@@ -1,0 +1,2 @@
+PyQt5
+sqlite3  # sqlite3 comes with Python, so this might not be required
