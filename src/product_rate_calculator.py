@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QFormLayout, QGroupBox, QLineEdit, QPushButton, \
     QTableWidget, QTableWidgetItem, QLabel, QComboBox, QHBoxLayout, QMenuBar, QMenu, QAction, QMessageBox
 import sqlite3
+from PyQt5.QtWidgets import QDialog
 
 class ProductRateCalculatorApp(QMainWindow):  # Change to QMainWindow
     def __init__(self):
@@ -116,7 +117,7 @@ class ProductRateCalculatorApp(QMainWindow):  # Change to QMainWindow
         # Actions for Raw Material Menu
         raw_material_management_action = QAction('Raw Material Management', self)
         raw_material_history_action = QAction('Raw Material History', self)
-        raw_material_management_action.triggered.connect(self.show_raw_material_management)
+        raw_material_management_action.triggered.connect(self.open_raw_material_management)
         raw_material_history_action.triggered.connect(self.show_raw_material_history)
 
         raw_material_menu.addAction(raw_material_management_action)
@@ -137,8 +138,10 @@ class ProductRateCalculatorApp(QMainWindow):  # Change to QMainWindow
     def show_product_history(self):
         QMessageBox.information(self, "Product History", "This feature will show the history of products.")
 
-    def show_raw_material_management(self):
-        QMessageBox.information(self, "Raw Material Management", "This feature will manage raw materials.")
+    def open_raw_material_management(self):
+        # QMessageBox.information(self, "Raw Material Management", "This feature will manage raw materials.")
+        raw_material_dialog = RawMaterialManagementDialog(self.db_connection)
+        raw_material_dialog.exec()
 
     def show_raw_material_history(self):
         QMessageBox.information(self, "Raw Material History", "This feature will show the history of raw materials.")
@@ -284,6 +287,35 @@ class ProductRateCalculatorApp(QMainWindow):  # Change to QMainWindow
             total_cost += quantity * rate
 
         self.total_rate.setText(str(total_cost))
+
+class RawMaterialManagementDialog(QDialog):
+    def __init__(self, db_connection):
+        super().__init__()
+        self.db_connection = db_connection
+        self.setWindowTitle("Raw Material Management")
+        self.setGeometry(150, 150, 400, 300)
+
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+
+        self.material_table = QTableWidget(0, 3)
+        self.material_table.setHorizontalHeaderLabels(["Material Name", "Type", "Price"])
+        layout.addWidget(self.material_table)
+
+        self.load_materials()
+
+    def load_materials(self):
+        cursor = self.db_connection.cursor()
+        cursor.execute("SELECT name, mat_type, price FROM raw_materials")
+        materials = cursor.fetchall()
+
+        self.material_table.setRowCount(0)  
+        for material in materials:
+            row_count = self.material_table.rowCount()
+            self.material_table.insertRow(row_count)
+            for col, data in enumerate(material):
+                self.material_table.setItem(row_count, col, QTableWidgetItem(str(data)))
+
 
 
 if __name__ == "__main__":
