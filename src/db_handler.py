@@ -9,6 +9,10 @@ def setup_database():
     conn = get_connection()
     cursor = conn.cursor()
 
+    cursor.execute("PRAGMA foreign_keys = ON")
+
+
+    # Create raw_materials table
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS raw_materials (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,18 +22,20 @@ def setup_database():
     )
     ''')
 
+    # Create raw_material_history table
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS raw_material_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        material_id INTEGER NOT NULL,
+        raw_material_id INTEGER NOT NULL,
         change_type TEXT NOT NULL,  -- e.g., 'added', 'updated', 'deleted'
         old_price REAL,
         new_price REAL,
         change_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (material_id) REFERENCES raw_materials (id)
+        FOREIGN KEY (raw_material_id) REFERENCES raw_materials (id)
     )
     ''')
 
+    # Create products table
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,6 +43,7 @@ def setup_database():
     )
     ''')
 
+    # Create product_materials table
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS product_materials (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -125,6 +132,75 @@ def save_product(product_name, materials):
     for material_id, quantity in materials:
         cursor.execute('''INSERT INTO product_materials (product_id, material_id, quantity)
                           VALUES (?, ?, ?)''', (product_id, material_id, quantity))
+        
+
+def update_raw_material_price(material_id, new_price):
+    """
+    Update the price of a raw material and log the change in history.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT price FROM raw_materials WHERE id = ?", (material_id,))
+    old_price = cursor.fetchone()
+
+    if old_price:
+        old_price = old_price[0]
+
+        if old_price != new_price:
+            cursor.execute("UPDATE raw_materials SET price = ? WHERE id = ?", (new_price, material_id))
+
+            cursor.execute("""
+                INSERT INTO raw_material_history (material_id, change_type, old_price, new_price)
+                VALUES (?, 'updated', ?, ?)
+            """, (material_id, old_price, new_price))
+            
+            conn.commit()
+
+    conn.close()
+
+def fetch_raw_material_history():
+    """
+    Fetch raw material history records from the database.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT h.id, r.name, h.old_price, h.new_price, h.change_date
+        FROM raw_material_history h
+        JOIN raw_materials r ON h.material_id = r.id
+        ORDER BY h.change_date DESC
+    """)
+    history = cursor.fetchall()
+
+    conn.close()
+    return history
+
+def delete_raw_material(material_id):
+    """
+    Delete a raw material and log the deletion in history.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT name, price FROM raw_materials WHERE id = ?", (material_id,))
+    material = cursor.fetchone()
+
+    if material:
+        name, old_price = material
+
+        cursor.execute("""
+            INSERT INTO raw_material_history (material_id, change_type, old_price, new_price)
+            VALUES (?, 'deleted', ?, NULL)
+        """, (material_id, old_price))
+
+        cursor.execute("DELETE FROM raw_materials WHERE id = ?", (material_id,))
+        conn.commit()
+
+    conn.close()
+
+
 
     conn.commit()
     conn.close()
