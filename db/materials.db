@@ -15,6 +15,37 @@ def create_db():
     )
     ''')
 
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS raw_material_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        material_id INTEGER NOT NULL,
+        change_type TEXT NOT NULL,  -- e.g., 'added', 'updated', 'deleted'
+        old_price REAL,
+        new_price REAL,
+        change_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (material_id) REFERENCES raw_materials (id)
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL
+    )
+    ''')
+
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS product_materials (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL,
+        material_id INTEGER NOT NULL,
+        quantity REAL NOT NULL,
+        FOREIGN KEY (product_id) REFERENCES products (id),
+        FOREIGN KEY (material_id) REFERENCES raw_materials (id)
+    )
+    ''')
+
     # Insert sample data
     materials = [
         ('P1', 227.00, 'Pigment'),
