@@ -1,6 +1,8 @@
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QFormLayout, QGroupBox, QLineEdit, QPushButton, \
     QTableWidget, QTableWidgetItem, QLabel, QComboBox, QHBoxLayout, QMenuBar, QMenu, QAction, QMessageBox
 import sqlite3
+from PyQt5.QtWidgets import QDialog
+from PyQt5.QtCore import Qt
 
 class ProductRateCalculatorApp(QMainWindow):  # Change to QMainWindow
     def __init__(self):
@@ -9,6 +11,23 @@ class ProductRateCalculatorApp(QMainWindow):  # Change to QMainWindow
         self.db_connection = self.create_db_connection()
         self.create_raw_materials_table()
         self.create_product_details_table()
+        self.create_raw_material_history_table()
+
+    def create_raw_material_history_table(self):
+        """Create the raw_material_history table if it does not exist"""
+        cursor = self.db_connection.cursor()
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS raw_material_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            raw_material_id INTEGER NOT NULL,
+            change_type TEXT NOT NULL,  -- e.g., 'added', 'updated', 'deleted'
+            old_price REAL,
+            new_price REAL,
+            change_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (raw_material_id) REFERENCES raw_materials (id)
+        )
+        ''')
+        self.db_connection.commit()
 
     def initUI(self):
         self.setWindowTitle("Product Rate Calculator")
@@ -116,7 +135,7 @@ class ProductRateCalculatorApp(QMainWindow):  # Change to QMainWindow
         # Actions for Raw Material Menu
         raw_material_management_action = QAction('Raw Material Management', self)
         raw_material_history_action = QAction('Raw Material History', self)
-        raw_material_management_action.triggered.connect(self.show_raw_material_management)
+        raw_material_management_action.triggered.connect(self.open_raw_material_management)
         raw_material_history_action.triggered.connect(self.show_raw_material_history)
 
         raw_material_menu.addAction(raw_material_management_action)
@@ -137,11 +156,43 @@ class ProductRateCalculatorApp(QMainWindow):  # Change to QMainWindow
     def show_product_history(self):
         QMessageBox.information(self, "Product History", "This feature will show the history of products.")
 
-    def show_raw_material_management(self):
-        QMessageBox.information(self, "Raw Material Management", "This feature will manage raw materials.")
+    def open_raw_material_management(self):
+        # QMessageBox.information(self, "Raw Material Management", "This feature will manage raw materials.")
+        raw_material_dialog = RawMaterialManagementDialog(self.db_connection)
+        raw_material_dialog.exec()
 
     def show_raw_material_history(self):
-        QMessageBox.information(self, "Raw Material History", "This feature will show the history of raw materials.")
+        history_dialog = RawMaterialHistoryDialog(self.db_connection)
+        history_dialog.exec()
+
+        # Create a layout for the dialog
+        layout = QVBoxLayout()
+
+        # Table to display raw material history
+        raw_material_table = QTableWidget(0, 3)
+        raw_material_table.setHorizontalHeaderLabels(["Name", "Type", "Price"])
+        layout.addWidget(raw_material_table)
+
+        # Fetch raw material data from the database
+        cursor = self.db_connection.cursor()
+        cursor.execute("SELECT name, mat_type, price FROM raw_materials")
+        raw_materials = cursor.fetchall()
+
+        # Populate the table with raw material data
+        for row_data in raw_materials:
+            row = raw_material_table.rowCount()
+            raw_material_table.insertRow(row)
+            for column, data in enumerate(row_data):
+                raw_material_table.setItem(row, column, QTableWidgetItem(str(data)))
+
+        # Add a close button
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(history_dialog.close)
+        layout.addWidget(close_button)
+
+        history_dialog.setLayout(layout)
+        history_dialog.exec()
+
 
     def show_inventory_details(self):
         QMessageBox.information(self, "Inventory Details", "This feature will show the inventory details.")
@@ -236,15 +287,13 @@ class ProductRateCalculatorApp(QMainWindow):  # Change to QMainWindow
         """, (selected_material_type,))
         material_names = cursor.fetchall()
 
-        # Clear the existing entries in the material name dropdown
         self.material_name_dropdown.clear()
 
-        # Add the new material names from the database
+       
         self.material_name_dropdown.addItem("Select Material")
         for material_name in material_names:
             self.material_name_dropdown.addItem(material_name[0])
 
-        # Automatically update rate when material name is selected
         self.material_name_dropdown.currentIndexChanged.connect(self.update_rate)
 
     def update_rate(self):
@@ -266,7 +315,7 @@ class ProductRateCalculatorApp(QMainWindow):  # Change to QMainWindow
         quantity = self.quantity_input.text()
         rate = self.rate_input.text()
 
-        # Add to the table widget
+       
         row_position = self.material_table.rowCount()
         self.material_table.insertRow(row_position)
         self.material_table.setItem(row_position, 0, QTableWidgetItem(material_type))
@@ -276,7 +325,6 @@ class ProductRateCalculatorApp(QMainWindow):  # Change to QMainWindow
 
     def calculate_product_rate(self):
         """Calculate and display product rate"""
-        # Collect all necessary information and calculate the rate
         total_cost = 0
         for row in range(self.material_table.rowCount()):
             quantity = float(self.material_table.item(row, 2).text())
@@ -284,6 +332,150 @@ class ProductRateCalculatorApp(QMainWindow):  # Change to QMainWindow
             total_cost += quantity * rate
 
         self.total_rate.setText(str(total_cost))
+
+class RawMaterialManagementDialog(QDialog):
+    def __init__(self, db_connection):
+        super().__init__()
+        self.db_connection = db_connection
+        self.setWindowTitle("Raw Material Management")
+        self.setGeometry(150, 150, 500, 400)
+
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+
+        self.material_table = QTableWidget(0, 3)
+        self.material_table.setHorizontalHeaderLabels(["Material Name", "Type", "Price"])
+        self.material_table.setEditTriggers(QTableWidget.DoubleClicked)  # Allow price editing
+        layout.addWidget(self.material_table)
+
+        button_layout = QHBoxLayout()
+        self.save_button = QPushButton("Save Changes")
+        self.delete_button = QPushButton("Delete Selected")
+        button_layout.addWidget(self.save_button)
+        button_layout.addWidget(self.delete_button)
+        layout.addLayout(button_layout)
+
+        self.save_button.clicked.connect(self.save_changes)
+        self.delete_button.clicked.connect(self.delete_selected)
+
+        self.load_materials()
+
+    def load_materials(self):
+        """Load raw materials into the table."""
+        cursor = self.db_connection.cursor()
+        cursor.execute("SELECT id, name, mat_type, price FROM raw_materials")
+        materials = cursor.fetchall()
+
+        self.material_table.setRowCount(0)
+        for material in materials:
+            row_count = self.material_table.rowCount()
+            self.material_table.insertRow(row_count)
+            self.material_table.setItem(row_count, 0, QTableWidgetItem(material[1]))  
+            self.material_table.setItem(row_count, 1, QTableWidgetItem(material[2]))  
+            self.material_table.setItem(row_count, 2, QTableWidgetItem(str(material[3])))
+            self.material_table.item(row_count, 0).setData(Qt.UserRole, material[0]) 
+
+    def save_changes(self):
+        """Save edited prices to the database and log changes to history."""
+        cursor = self.db_connection.cursor()
+        for row in range(self.material_table.rowCount()):
+            material_id = self.material_table.item(row, 0).data(Qt.UserRole)
+            name = self.material_table.item(row, 0).text()
+            mat_type = self.material_table.item(row, 1).text()
+            new_price = float(self.material_table.item(row, 2).text())
+
+            
+            cursor.execute("""
+                SELECT price FROM raw_materials WHERE id = ?
+            """, (material_id,))
+            old_price = cursor.fetchone()[0]
+
+            
+            cursor.execute("""
+                UPDATE raw_materials
+                SET price = ?
+                WHERE id = ?
+            """, (new_price, material_id))
+
+            
+            cursor.execute("""
+                INSERT INTO raw_material_history (raw_material_id, change_type, old_price, new_price)
+                VALUES (?, ?, ?, ?)
+            """, (material_id,'updated', old_price, new_price))
+
+        self.db_connection.commit()
+        QMessageBox.information(self, "Success", "Changes saved successfully!")
+
+
+    def delete_selected(self):
+        """Delete the selected raw material from the database."""
+        selected_row = self.material_table.currentRow()
+        if selected_row == -1:
+            QMessageBox.warning(self, "Error", "Please select a row to delete.")
+            return
+
+        material_id = self.material_table.item(selected_row, 0).data(Qt.UserRole)
+        cursor = self.db_connection.cursor()
+
+       
+        cursor.execute("DELETE FROM raw_materials WHERE id = ?", (material_id,))
+        self.db_connection.commit()
+
+        self.material_table.removeRow(selected_row)
+        QMessageBox.information(self, "Success", "Material deleted successfully!")
+
+class RawMaterialHistoryDialog(QDialog):
+    def __init__(self, db_connection):
+        super().__init__()
+        self.db_connection = db_connection
+        self.setWindowTitle("Raw Material History")
+        self.setGeometry(150, 150, 600, 400)
+
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+
+    
+        self.history_table = QTableWidget(0, 5)
+        # self.history_table.setHorizontalHeaderLabels(["Material Name", "Type", "Price", "Date"])
+        self.history_table.setColumnCount(5) 
+        self.history_table.setHorizontalHeaderLabels(["Material Name", "Material Type", "Old Price", "New Price", "Date"])
+        layout.addWidget(self.history_table)
+
+        self.load_history()
+
+    def load_history(self):
+        """Load raw material history into the table, showing all materials."""
+        cursor = self.db_connection.cursor()
+        cursor.execute("""
+            SELECT rm.name, rm.mat_type, 
+                rh.old_price, 
+                rh.new_price, 
+                rh.change_date
+            FROM raw_materials rm
+            LEFT JOIN raw_material_history rh 
+                ON rm.id = rh.raw_material_id
+            GROUP BY rm.id
+            ORDER BY MAX(rh.change_date) DESC
+        """)
+        history = cursor.fetchall()
+
+        self.history_table.setRowCount(0) 
+        for record in history:
+            row_count = self.history_table.rowCount()
+            self.history_table.insertRow(row_count)
+
+            self.history_table.setItem(row_count, 0, QTableWidgetItem(record[0])) 
+            self.history_table.setItem(row_count, 1, QTableWidgetItem(record[1])) 
+            
+            if record[2] == record[3]:
+                self.history_table.setItem(row_count, 2, QTableWidgetItem(str(record[2]) if record[2] is not None else "N/A"))  # Old Price
+                self.history_table.setItem(row_count, 3, QTableWidgetItem("")) 
+                self.history_table.setItem(row_count, 4, QTableWidgetItem("")) 
+            else: 
+                self.history_table.setItem(row_count, 2, QTableWidgetItem(str(record[2]) if record[2] is not None else "N/A"))  # Old Price
+                self.history_table.setItem(row_count, 3, QTableWidgetItem(str(record[3])))  
+                self.history_table.setItem(row_count, 4, QTableWidgetItem(str(record[4])))  
+
 
 
 if __name__ == "__main__":
