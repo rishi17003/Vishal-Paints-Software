@@ -35,7 +35,7 @@ def setup_database():
     )
     ''')
 
-    # Create products table
+    # # Create products table
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,17 +43,39 @@ def setup_database():
     )
     ''')
 
+    cursor.execute("""  
+            CREATE TABLE IF NOT EXISTS product_details (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                operator_name TEXT,
+                product_name TEXT,
+                description TEXT,
+                yield REAL,
+                viscosity TEXT,
+                weight_per_lit REAL,
+                container_cost REAL,
+                transport_cost REAL,
+                sales_cost REAL,
+                misc_cost REAL,
+                total_rate REAL,
+                created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+
     # Create product_materials table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS product_materials (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        product_id INTEGER NOT NULL,
-        material_id INTEGER NOT NULL,
-        quantity REAL NOT NULL,
-        FOREIGN KEY (product_id) REFERENCES products (id),
-        FOREIGN KEY (material_id) REFERENCES raw_materials (id)
-    )
-    ''')
+    cursor.execute("""
+            CREATE TABLE IF NOT EXISTS product_materials (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_id INTEGER,
+                material_type TEXT,
+                material_name TEXT,
+                quantity real,
+                rate REAL,
+                FOREIGN KEY(product_id) REFERENCES product_details(id)
+            );
+        """)
+
+
 
     # Insert sample data into raw_materials table
     materials = [
@@ -106,6 +128,39 @@ def setup_database():
     INSERT OR IGNORE INTO raw_materials (name, price, mat_type) 
     VALUES (?, ?, ?)
     ''', materials)
+
+    # -- Table for storing product details
+    cursor.execute('''
+            CREATE TABLE IF NOT EXISTS products_invoice (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_name TEXT,
+            description TEXT,
+            operator_name TEXT,
+            yield REAL,
+            viscosity TEXT,
+            weight_per_lit REAL,
+            container_cost REAL,
+            transport_cost REAL,
+            sales_cost REAL,
+            misc_cost REAL,
+            total_rate REAL,
+            created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        ''')
+
+    # -- Table for storing raw materials linked to a product
+    cursor.execute('''
+            CREATE TABLE IF NOT EXISTS raw_materials_invoice (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_id INTEGER,
+                material_type TEXT,
+                material_name TEXT,
+                quantity REAL,
+                rate REAL,
+                FOREIGN KEY (product_id) REFERENCES products_invoice (id)
+            );
+            ''')
+
 
     conn.commit()
     conn.close()
